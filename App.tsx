@@ -328,7 +328,7 @@ const App: React.FC = () => {
                     </div>
                     
                     <h2 className="text-3xl md:text-4xl font-bold text-brand-900 mb-4 tracking-tight">
-                      Mocha -Luyện tập Khám Bệnh Nhi Ảo
+                      Mocha - Luyện tập Khám Bệnh Nhi Ảo
                     </h2>
                     <p className="text-slate-500 max-w-lg mb-10 text-lg leading-relaxed">
                       Thực hành khám lâm sàng với bệnh nhân nhi ảo, sau đó nhận phản hồi chi tiết từ AI chuyên gia.
