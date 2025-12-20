@@ -1,4 +1,4 @@
-import { ClinicalSystem, DifficultyLevel, AgeGroup } from './types';
+import { ClinicalSystem, DifficultyLevel, AgeGroup, DiseaseCategory, DiseaseInfo } from './types';
 
 export const MODEL_NAME = 'gemini-2.5-flash';
 
@@ -110,3 +110,79 @@ export const AGE_GROUPS: { value: AgeGroup; label: string; range: string }[] = [
 ];
 
 export const MIN_INTERACTION_TURNS = 5; // Minimum Q&A turns before allowing diagnosis
+
+// ============ Disease Categories from RAG Data ============
+
+export const DISEASE_CATEGORIES: { value: DiseaseCategory; label: string; description: string; icon: string }[] = [
+  { value: 'all', label: 'Tất cả', description: 'Toàn bộ cơ sở dữ liệu y khoa', icon: '📚' },
+  { value: 'procedures', label: 'Thủ thuật Y tế', description: 'Hướng dẫn quy trình thủ thuật', icon: '🏥' },
+  { value: 'pediatrics', label: 'Nhi khoa', description: 'Bệnh lý và điều trị nhi khoa', icon: '👶' },
+  { value: 'treatment', label: 'Phác đồ Điều trị', description: 'Phác đồ điều trị chuẩn', icon: '💊' },
+];
+
+// Sample diseases from RAG data for quick selection
+export const COMMON_DISEASES: DiseaseInfo[] = [
+  // Pediatrics - Common conditions
+  { id: 'NHIKHOA-1', name: 'Đặc điểm hệ tuần hoàn trẻ em', category: 'pediatrics', sections: ['Tuần hoàn bào thai', 'Tuần hoàn sơ sinh'], source: 'NHIKHOA2.json' },
+  { id: 'NHIKHOA-2', name: 'Tiếp cận đau ngực ở trẻ em', category: 'pediatrics', sections: ['Đại cương', 'Các bước tiếp cận'], source: 'NHIKHOA2.json' },
+  { id: 'NHIKHOA-3', name: 'Tiếp cận trẻ tím', category: 'pediatrics', sections: ['Phân loại tím', 'Cơ chế bệnh sinh'], source: 'NHIKHOA2.json' },
+  { id: 'NHIKHOA-5', name: 'Tiếp cận tim bẩm sinh ở trẻ em', category: 'pediatrics', sections: ['Dấu hiệu gợi ý', 'Tiếp cận chẩn đoán'], source: 'NHIKHOA2.json' },
+  
+  // Procedures
+  { id: 'BOYTE-1', name: 'Nội soi đặt stent khí phế quản', category: 'procedures', sections: ['Đại cương', 'Chỉ định', 'Chống chỉ định', 'Các bước tiến hành'], source: 'BoYTe200_v3.json' },
+  { id: 'BOYTE-2', name: 'Thở oxy qua mặt nạ có túi dự trữ', category: 'procedures', sections: ['Đại cương', 'Chỉ định', 'Chống chỉ định', 'Theo dõi'], source: 'BoYTe200_v3.json' },
+  { id: 'BOYTE-3', name: 'Thở oxy qua mặt nạ không túi dự trữ', category: 'procedures', sections: ['Đại cương', 'Chỉ định', 'Các bước tiến hành'], source: 'BoYTe200_v3.json' },
+  
+  // Treatment protocols - will be added based on PHACDODIEUTRI data
+];
+
+// Standard sections for medical procedures
+export const MEDICAL_SECTIONS = [
+  'ĐẠI CƯƠNG',
+  'CHỈ ĐỊNH', 
+  'CHỐNG CHỈ ĐỊNH',
+  'CHUẨN BỊ',
+  'CÁC BƯỚC TIẾN HÀNH',
+  'THEO DÕI',
+  'TAI BIẾN VÀ XỬ TRÍ',
+  'ĐIỀU TRỊ',
+  'PHÒNG NGỪA',
+];
+
+// RAG-enhanced prompts
+export const RAG_SYSTEM_INSTRUCTION = `Bạn là bác sĩ y khoa chuyên gia với kiến thức từ cơ sở dữ liệu y khoa Việt Nam.
+
+NGUYÊN TẮC TRẢ LỜI:
+1. Trả lời dựa trên CONTEXT được cung cấp
+2. Trích dẫn chính xác từ tài liệu gốc
+3. Nếu không có thông tin trong context, nói rõ "Không tìm thấy thông tin"
+4. Sử dụng ngôn ngữ y khoa chuyên nghiệp nhưng dễ hiểu
+5. Luôn nhắc nhở đi khám bác sĩ khi cần thiết
+
+FORMAT TRẢ LỜI:
+- Sử dụng bullet points cho danh sách
+- In đậm các từ khóa quan trọng
+- Trích dẫn nguồn tài liệu khi có thể
+`;
+
+export const RAG_CASE_GENERATION_PROMPT = `Dựa trên thông tin bệnh lý sau từ cơ sở dữ liệu y khoa, tạo một ca bệnh nhi thực tế:
+
+THÔNG TIN BỆNH:
+{DISEASE_INFO}
+
+YÊU CẦU:
+1. Tạo case bệnh nhân với tên, tuổi, giới tính
+2. Mô tả triệu chứng dựa trên tài liệu y khoa
+3. Phù hợp với mức độ khó: {DIFFICULTY}
+4. Trả về JSON format:
+{
+  "patientName": "Tên bệnh nhân",
+  "age": số tuổi,
+  "ageUnit": "years|months|days", 
+  "gender": "male|female",
+  "chiefComplaint": "Lý do đến khám",
+  "openingMessage": "Lời mở đầu của bệnh nhân/người nhà (2-3 câu)",
+  "keySymptoms": ["triệu chứng 1", "triệu chứng 2"],
+  "expectedDiagnosis": "Chẩn đoán đúng",
+  "keyManagement": ["điều trị 1", "điều trị 2"]
+}`;

@@ -32,6 +32,9 @@ export interface CaseConfig {
   clinicalSystem?: ClinicalSystem;
   difficulty?: DifficultyLevel;
   practiceMode?: boolean;
+  // RAG-based case selection
+  diseaseId?: string;
+  diseaseName?: string;
 }
 
 export interface PatientInfo {
@@ -82,4 +85,36 @@ export interface TrainingSession {
   updatedAt: number;
 }
 
-export type AppView = 'home' | 'case-selection' | 'consultation' | 'diagnosis' | 'feedback' | 'history';
+export type AppView = 'home' | 'case-selection' | 'consultation' | 'diagnosis' | 'feedback' | 'history' | 'knowledge';
+
+// ============ RAG Knowledge Base Types ============
+
+export type DiseaseCategory = 
+  | 'procedures'      // Thủ thuật y tế (BoYTe200)
+  | 'pediatrics'      // Nhi khoa (NHIKHOA2)  
+  | 'treatment'       // Phác đồ điều trị (PHACDODIEUTRI)
+  | 'all';
+
+export interface DiseaseInfo {
+  id: string;
+  name: string;           // Tên bệnh/thủ thuật (Index)
+  category: DiseaseCategory;
+  sections: string[];     // level1_items - các mục chính
+  source: string;         // File nguồn
+}
+
+export interface KnowledgeQuery {
+  query: string;
+  category?: DiseaseCategory;
+  diseaseId?: string;
+}
+
+export interface KnowledgeResult {
+  answer: string;
+  sources: {
+    file: string;
+    title: string;
+    section: string;
+    content: string;
+  }[];
+}

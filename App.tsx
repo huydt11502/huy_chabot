@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Message, TrainingSession, CaseConfig, DiagnosisSubmission } from './types';
-import { MIN_INTERACTION_TURNS, CLINICAL_SYSTEMS, DIFFICULTY_LEVELS } from './constants';
+import { MIN_INTERACTION_TURNS, CLINICAL_SYSTEMS, DIFFICULTY_LEVELS, DISEASE_CATEGORIES, COMMON_DISEASES } from './constants';
 import { sendMessageStream, generateCase, evaluateSession } from './services/geminiService';
 import Sidebar from './components/Sidebar';
 import MessageBubble from './components/MessageBubble';
@@ -8,7 +8,7 @@ import InputArea from './components/InputArea';
 import CaseTypeModal from './components/CaseTypeModal';
 import DiagnosisForm from './components/DiagnosisForm';
 import FeedbackPanel from './components/FeedbackPanel';
-import { MenuIcon, HeartPulseIcon, ChildIcon, PlayIcon, HistoryIcon, DocumentTextIcon } from './components/Icons';
+import { MenuIcon, HeartPulseIcon, ChildIcon, PlayIcon, HistoryIcon, DocumentTextIcon, DatabaseIcon } from './components/Icons';
 
 const App: React.FC = () => {
   const [sessions, setSessions] = useState<TrainingSession[]>([]);
@@ -278,11 +278,17 @@ const App: React.FC = () => {
                       {currentSession.patientInfo.name}
                     </span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      currentSession.caseConfig.caseType === 'random' 
+                      currentSession.caseConfig.diseaseId 
+                        ? 'bg-green-100 text-green-700'
+                        : currentSession.caseConfig.caseType === 'random' 
                         ? 'bg-blue-100 text-blue-700' 
                         : 'bg-purple-100 text-purple-700'
                     }`}>
-                      {currentSession.caseConfig.caseType === 'random' ? 'Ngẫu nhiên' : 'Tùy chỉnh'}
+                      {currentSession.caseConfig.diseaseId 
+                        ? 'CSDL Y khoa' 
+                        : currentSession.caseConfig.caseType === 'random' 
+                        ? 'Ngẫu nhiên' 
+                        : 'Tùy chỉnh'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -290,7 +296,7 @@ const App: React.FC = () => {
                     <span>•</span>
                     <span>{currentSession.patientInfo.gender === 'male' ? 'Nam' : 'Nữ'}</span>
                     <span>•</span>
-                    <span>{getSystemLabel(currentSession.patientInfo.clinicalSystem)}</span>
+                    <span>{currentSession.caseConfig.diseaseName || getSystemLabel(currentSession.patientInfo.clinicalSystem)}</span>
                     <span>•</span>
                     <span className={`font-medium ${
                       currentSession.patientInfo.difficulty === 'easy' ? 'text-green-600' :
@@ -322,7 +328,7 @@ const App: React.FC = () => {
           <div className="max-w-3xl mx-auto h-full w-full">
             {!currentSession ? (
                 // Welcome Screen / Home
-                <div className="h-full flex flex-col items-center justify-center p-6 text-center">
+                <div className="h-full flex flex-col items-center justify-center p-6 text-center overflow-y-auto">
                     <div className="w-24 h-24 bg-gradient-to-br from-primary-500 to-blue-600 rounded-3xl shadow-2xl flex items-center justify-center mb-8 rotate-3">
                         <ChildIcon className="w-12 h-12 text-white" />
                     </div>
@@ -330,9 +336,17 @@ const App: React.FC = () => {
                     <h2 className="text-3xl md:text-4xl font-bold text-brand-900 mb-4 tracking-tight">
                       Mocha - Luyện tập Khám Bệnh Nhi Ảo
                     </h2>
-                    <p className="text-slate-500 max-w-lg mb-10 text-lg leading-relaxed">
+                    <p className="text-slate-500 max-w-lg mb-8 text-lg leading-relaxed">
                       Thực hành khám lâm sàng với bệnh nhân nhi ảo, sau đó nhận phản hồi chi tiết từ AI chuyên gia.
                     </p>
+
+                    {/* RAG Database Info */}
+                    <div className="flex items-center gap-2 mb-8 px-4 py-2 bg-green-50 border border-green-200 rounded-full">
+                      <DatabaseIcon className="w-4 h-4 text-green-600" />
+                      <span className="text-sm text-green-700">
+                        Cơ sở dữ liệu: {COMMON_DISEASES.length} bệnh lý từ BoYTe, NHIKHOA, Phác đồ điều trị
+                      </span>
+                    </div>
                     
                     <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
                       <button 
@@ -373,6 +387,19 @@ const App: React.FC = () => {
                         </div>
                         <h3 className="font-semibold text-gray-800 mb-1">Đánh giá</h3>
                         <p className="text-sm text-gray-500">Nhận feedback chi tiết từ AI chuyên gia</p>
+                      </div>
+                    </div>
+
+                    {/* Disease Categories Preview */}
+                    <div className="w-full max-w-2xl mt-8">
+                      <h3 className="text-sm font-medium text-gray-500 mb-3 text-left">Danh mục bệnh lý trong CSDL</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {DISEASE_CATEGORIES.filter(c => c.value !== 'all').map(cat => (
+                          <div key={cat.value} className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-full text-sm text-gray-600">
+                            <span>{cat.icon}</span>
+                            <span>{cat.label}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                 </div>

@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { SYSTEM_INSTRUCTION, VIRTUAL_PATIENT_INSTRUCTION, EVALUATOR_INSTRUCTION, CLINICAL_SYSTEMS, DIFFICULTY_LEVELS } from "../constants";
+import { SYSTEM_INSTRUCTION, VIRTUAL_PATIENT_INSTRUCTION, EVALUATOR_INSTRUCTION, CLINICAL_SYSTEMS, DIFFICULTY_LEVELS, COMMON_DISEASES, RAG_CASE_GENERATION_PROMPT } from "../constants";
 import { Message, CaseConfig, PatientInfo, TrainingSession, DiagnosisSubmission, EvaluationResult, ClinicalSystem, DifficultyLevel, AgeGroup } from "../types";
 
 const MODEL_NAME = 'gemini-2.5-flash';
@@ -99,6 +99,121 @@ interface GeneratedCase {
 
 const getRandomElement = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
+// ============ Disease-Based Case Generation (RAG-enhanced) ============
+
+const generateDiseaseBasedCase = async (client: GoogleGenerativeAI, config: CaseConfig): Promise<GeneratedCase> => {
+  // First try to find in COMMON_DISEASES for extra info (sections, source)
+  const disease = COMMON_DISEASES.find(d => d.id === config.diseaseId);
+  
+  // Use disease info from COMMON_DISEASES if available, otherwise use config
+  const diseaseName = disease?.name || config.diseaseName || 'Bệnh không xác định';
+  const diseaseSource = disease?.source || 'Cơ sở dữ liệu y khoa';
+  const diseaseSections = disease?.sections || [];
+  const diseaseCategory = disease?.category || 'pediatrics';
+
+  const gender = Math.random() > 0.5 ? 'male' : 'female';
+  const name = getRandomElement(vietnameseNames[gender]);
+  const difficulty = config.difficulty || 'medium';
+  const difficultyLabel = DIFFICULTY_LEVELS.find(d => d.value === difficulty)?.label || 'Trung bình';
+
+  // Generate appropriate age based on disease category
+  let age: number;
+  let ageUnit: 'days' | 'months' | 'years';
+  
+  if (diseaseCategory === 'pediatrics' || diseaseCategory === 'Lý thuyết nhi khoa') {
+    // Pediatric cases - varied ages
+    const ageChoice = Math.random();
+    if (ageChoice < 0.2) {
+      age = Math.floor(Math.random() * 11) + 1;
+      ageUnit = 'months';
+    } else if (ageChoice < 0.5) {
+      age = Math.floor(Math.random() * 4) + 1;
+      ageUnit = 'years';
+    } else {
+      age = Math.floor(Math.random() * 10) + 5;
+      ageUnit = 'years';
+    }
+  } else {
+    // Procedures/Treatment - mostly older children
+    age = Math.floor(Math.random() * 12) + 3;
+    ageUnit = 'years';
+  }
+
+  const prompt = `Bạn là hệ thống tạo ca bệnh nhi khoa dựa trên kiến thức y khoa chuẩn.
+
+BỆNH LÝ TỪ CƠ SỞ DỮ LIỆU:
+- Tên: ${diseaseName}
+- Nguồn: ${diseaseSource}
+${diseaseSections.length > 0 ? `- Các mục: ${diseaseSections.join(', ')}` : ''}
+
+THÔNG TIN BỆNH NHÂN:
+- Tên: ${name}
+- Tuổi: ${age} ${ageUnit === 'years' ? 'tuổi' : ageUnit === 'months' ? 'tháng' : 'ngày'}
+- Giới: ${gender === 'male' ? 'Nam' : 'Nữ'}
+- Mức độ khó: ${difficultyLabel}
+
+Hãy tạo một ca bệnh thực tế dựa trên bệnh lý trên. Trả về JSON với format sau (chỉ trả về JSON, không có text khác):
+{
+  "chiefComplaint": "Lý do đến khám ngắn gọn (1-2 câu) phù hợp với bệnh lý ${diseaseName}",
+  "openingMessage": "Lời chào và mô tả triệu chứng ban đầu từ góc nhìn phụ huynh/bệnh nhân (2-3 câu, tự nhiên như đang nói chuyện)",
+  "clinicalSystem": "hệ cơ quan phù hợp: respiratory/cardiovascular/gastrointestinal/neurological/infectious/endocrine/renal/hematological"
+}`;
+
+  try {
+    const model = client.getGenerativeModel({ model: MODEL_NAME });
+    console.log('Generating disease-based case with Gemini...', diseaseName);
+    
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    console.log('Generated text:', text);
+    
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Invalid response format');
+    }
+
+    const caseData = JSON.parse(jsonMatch[0]);
+    const caseId = config.diseaseId || `RAG-${Date.now().toString(36).toUpperCase()}`;
+
+    const patientInfo: PatientInfo = {
+      caseId: `${caseId}-${Date.now().toString(36).toUpperCase()}`,
+      name,
+      age,
+      ageUnit,
+      gender,
+      chiefComplaint: caseData.chiefComplaint,
+      clinicalSystem: (caseData.clinicalSystem as ClinicalSystem) || 'respiratory',
+      difficulty: difficulty,
+      caseType: config.caseType,
+    };
+
+    return {
+      patientInfo,
+      openingMessage: caseData.openingMessage,
+    };
+  } catch (error) {
+    console.error('Disease-based case generation error:', error);
+    const caseId = config.diseaseId || `RAG-${Date.now().toString(36).toUpperCase()}`;
+    // Fallback case
+    const patientInfo: PatientInfo = {
+      caseId: `${caseId}-${Date.now().toString(36).toUpperCase()}`,
+      name,
+      age,
+      ageUnit,
+      gender,
+      chiefComplaint: `Liên quan đến ${diseaseName}`,
+      clinicalSystem: 'respiratory',
+      difficulty: difficulty,
+      caseType: config.caseType,
+    };
+
+    return {
+      patientInfo,
+      openingMessage: `Chào bác sĩ, con ${name} của tôi có vấn đề sức khỏe. Tôi rất lo lắng và muốn bác sĩ khám cho cháu.`,
+    };
+  }
+};
+
 const generateRandomConfig = (): { system: ClinicalSystem; difficulty: DifficultyLevel; ageGroup: AgeGroup } => {
   const systems: ClinicalSystem[] = ['respiratory', 'gastrointestinal', 'infectious', 'neurological'];
   const difficulties: DifficultyLevel[] = ['easy', 'medium', 'hard'];
@@ -137,6 +252,11 @@ const vietnameseNames = {
 
 export const generateCase = async (config: CaseConfig): Promise<GeneratedCase> => {
   const client = getClient();
+  
+  // Check if this is a disease-based case from RAG database
+  if (config.diseaseId && config.diseaseName) {
+    return generateDiseaseBasedCase(client, config);
+  }
   
   // Determine case parameters
   let clinicalSystem = config.clinicalSystem;

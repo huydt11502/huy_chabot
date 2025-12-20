@@ -1,4 +1,8 @@
 {
-  "name": "BioMed Assistant",
-  "description": "A professional biomedical AI assistant specializing in medical information and health queries, featuring a clean, professional interface."
+  "name": "Mocha - Pediatric Virtual Patient Training",
+  "description": "An AI-powered virtual patient training platform for medical students to practice pediatric clinical examination skills using Google Gemini AI.",
+  "version": "1.0.0",
+  "author": "Mocha Team",
+  "license": "MIT",
+  "keywords": ["medical training", "pediatric", "virtual patient", "AI healthcare", "medical education", "Vietnam"]
 }
