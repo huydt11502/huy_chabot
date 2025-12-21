@@ -40,7 +40,7 @@ const CaseTypeModal: React.FC<CaseTypeModalProps> = ({ isOpen, onClose, onStartC
   const checkRagHealth = async () => {
     try {
       const health = await ragService.checkHealth();
-      setRagAvailable(health.rag_ready && health.diseases_loaded > 0);
+      setRagAvailable(health.status === 'healthy');
     } catch {
       setRagAvailable(false);
     }
@@ -50,12 +50,15 @@ const CaseTypeModal: React.FC<CaseTypeModalProps> = ({ isOpen, onClose, onStartC
     setIsLoading(true);
     setError(null);
     try {
-      const [diseases, categories] = await Promise.all([
-        ragService.getDiseases(),
-        ragService.getCategories()
-      ]);
+      const diseases = await ragService.getDiseases();
       setRagDiseases(diseases);
-      setRagCategories(categories);
+      // Extract categories from diseases
+      const categoryMap = new Map<string, number>();
+      diseases.forEach(d => {
+        categoryMap.set(d.category, (categoryMap.get(d.category) || 0) + 1);
+      });
+      const cats: CategoryCount[] = Array.from(categoryMap.entries()).map(([name, count]) => ({ name, count }));
+      setRagCategories(cats);
     } catch (err) {
       setError('Không thể kết nối đến CSDL Y khoa. Vui lòng thử lại.');
       console.error('Failed to fetch diseases:', err);
@@ -75,8 +78,13 @@ const CaseTypeModal: React.FC<CaseTypeModalProps> = ({ isOpen, onClose, onStartC
   };
 
   const handleSelectDisease = () => {
-    setStep('disease');
-    setConfig({ ...config, caseType: 'customised' });
+    // Instead of showing diseases in this modal, trigger parent to open DiseaseSelector
+    onStartCase({ 
+      caseType: 'customised',
+      diseaseId: '__TRIGGER_DISEASE_SELECTOR__', // Flag to open selector
+      diseaseName: ''
+    });
+    resetAndClose();
   };
 
   const handleStartWithDisease = (diseaseId: string, diseaseName: string) => {

@@ -56,6 +56,17 @@ export interface DiagnosisSubmission {
   submittedAt: number;
 }
 
+// RAG Diagnosis Submission (detailed format for RAG evaluation)
+export interface RAGDiagnosisSubmission {
+  clinical: string;              // Lâm sàng
+  paraclinical: string;          // Cận lâm sàng
+  definitiveDiagnosis: string;   // Chẩn đoán xác định
+  differentialDiagnosis: string; // Chẩn đoán phân biệt
+  treatment: string;             // Cách điều trị
+  medication: string;            // Thuốc
+  submittedAt: number;
+}
+
 export interface EvaluationResult {
   overallScore: number;
   maxScore: number;
@@ -72,17 +83,39 @@ export interface EvaluationResult {
   evaluatedAt: number;
 }
 
+// RAG Evaluation Result (from RAG system)
+export interface RAGEvaluationResult {
+  diem_manh: string[];
+  diem_yeu: string[];
+  da_co: string[];
+  thieu: string[];
+  dien_giai: string;
+  diem_so: string;
+  nhan_xet_tong_quan: string;
+  standardAnswer?: string;
+  sources?: {
+    file: string;
+    title: string;
+    section: string;
+    content: string;
+  }[];
+}
+
 export interface TrainingSession {
   id: string;
   caseConfig: CaseConfig;
   patientInfo: PatientInfo | null;
   messages: Message[];
   diagnosis: DiagnosisSubmission | null;
+  ragDiagnosis: RAGDiagnosisSubmission | null; // For RAG-based cases
   evaluation: EvaluationResult | null;
+  ragEvaluation: RAGEvaluationResult | null; // For RAG-based evaluations
   status: SessionStatus;
   interactionCount: number;
   createdAt: number;
   updatedAt: number;
+  isRAGMode?: boolean; // Flag to indicate if this is a RAG-based session
+  ragSessionId?: string; // Session ID for RAG backend
 }
 
 export type AppView = 'home' | 'case-selection' | 'consultation' | 'diagnosis' | 'feedback' | 'history' | 'knowledge';

@@ -1,0 +1,22 @@
+# secrets
+.env
+*.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# vscode
+.vscode/
+
+# data & cache (RAG)
+faiss_cache/
+store/
+wandb/
+
+# model files
+*.bin
+*.pt
+*.ckpt

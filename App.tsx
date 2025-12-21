@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Message, TrainingSession, CaseConfig, DiagnosisSubmission } from './types';
+import { Message, TrainingSession, CaseConfig, DiagnosisSubmission, RAGDiagnosisSubmission, RAGEvaluationResult } from './types';
 import { MIN_INTERACTION_TURNS, CLINICAL_SYSTEMS, DIFFICULTY_LEVELS, DISEASE_CATEGORIES, COMMON_DISEASES } from './constants';
 import { sendMessageStream, generateCase, evaluateSession } from './services/geminiService';
+import { ragService, Disease } from './services/ragService';
 import Sidebar from './components/Sidebar';
 import MessageBubble from './components/MessageBubble';
 import InputArea from './components/InputArea';
 import CaseTypeModal from './components/CaseTypeModal';
 import DiagnosisForm from './components/DiagnosisForm';
+import RAGDiagnosisForm from './components/RAGDiagnosisForm';
+import DiseaseSelectorModal from './components/DiseaseSelectorModal';
 import FeedbackPanel from './components/FeedbackPanel';
 import { MenuIcon, HeartPulseIcon, ChildIcon, PlayIcon, HistoryIcon, DocumentTextIcon, DatabaseIcon } from './components/Icons';
 
@@ -18,7 +21,9 @@ const App: React.FC = () => {
   
   // Modal states
   const [showCaseModal, setShowCaseModal] = useState(false);
+  const [showDiseaseSelector, setShowDiseaseSelector] = useState(false);
   const [showDiagnosisForm, setShowDiagnosisForm] = useState(false);
+  const [showRAGDiagnosisForm, setShowRAGDiagnosisForm] = useState(false);
   const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
 
@@ -47,6 +52,21 @@ const App: React.FC = () => {
   // Start a new case
   const handleStartCase = useCallback(async (config: CaseConfig) => {
     setShowCaseModal(false);
+    
+    // Check if this is a RAG-based case (has diseaseId flag)
+    if (config.diseaseId === '__TRIGGER_DISEASE_SELECTOR__') {
+      // Open disease selector modal
+      setShowDiseaseSelector(true);
+      return;
+    }
+    
+    if (config.diseaseId && config.diseaseName) {
+      // Disease already selected (shouldn't happen with new flow, but keep for safety)
+      setShowDiseaseSelector(true);
+      return;
+    }
+    
+    // Regular AI mode
     setIsLoading(true);
 
     const newSession: TrainingSession = {
@@ -55,11 +75,14 @@ const App: React.FC = () => {
       patientInfo: null,
       messages: [],
       diagnosis: null,
+      ragDiagnosis: null,
       evaluation: null,
+      ragEvaluation: null,
       status: 'in-progress',
       interactionCount: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      isRAGMode: false,
     };
 
     setSessions(prev => [newSession, ...prev]);
@@ -99,6 +122,90 @@ const App: React.FC = () => {
       setIsLoading(false);
     }
   }, []);
+
+  // Handler for RAG disease selection
+  const handleSelectRAGDisease = async (disease: Disease) => {
+    console.log('[RAG] Selected disease:', disease);
+    setShowDiseaseSelector(false);
+    setIsLoading(true);
+
+    const sessionId = Date.now().toString();
+    const ragBackendSessionId = `rag_${sessionId}`;
+
+    const newSession: TrainingSession = {
+      id: sessionId,
+      caseConfig: {
+        caseType: 'customised',
+        diseaseId: disease.id,
+        diseaseName: disease.name,
+      },
+      patientInfo: null,
+      messages: [],
+      diagnosis: null,
+      ragDiagnosis: null,
+      evaluation: null,
+      ragEvaluation: null,
+      status: 'in-progress',
+      interactionCount: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      isRAGMode: true,
+      ragSessionId: ragBackendSessionId,
+    };
+
+    setSessions(prev => [newSession, ...prev]);
+    setCurrentSessionId(sessionId);
+
+    try {
+      console.log('[RAG] Calling generateCase for:', disease.name);
+      // Call RAG API to generate case
+      const result = await ragService.generateCase(disease.name, ragBackendSessionId);
+      console.log('[RAG] generateCase result:', result);
+      
+      const initialMessage: Message = {
+        id: Date.now().toString(),
+        role: 'model',
+        content: result.case,
+        timestamp: Date.now(),
+      };
+
+      // Create a simple patient info from disease
+      const patientInfo = {
+        caseId: sessionId,
+        name: 'Bệnh nhân',
+        age: 5,
+        ageUnit: 'years' as const,
+        gender: 'male' as const,
+        chiefComplaint: disease.name,
+        clinicalSystem: 'pediatrics' as const,
+        difficulty: 'medium' as const,
+        caseType: 'customised' as const,
+      };
+
+      setSessions(prev => prev.map(s => 
+        s.id === sessionId 
+          ? { ...s, patientInfo, messages: [initialMessage], updatedAt: Date.now() }
+          : s
+      ));
+    } catch (error) {
+      console.error('[RAG] Failed to generate RAG case:', error);
+      console.error('[RAG] Error details:', JSON.stringify(error, null, 2));
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'model',
+        content: `Xin lỗi, không thể tạo ca bệnh từ CSDL. Lỗi: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: Date.now(),
+        isError: true,
+      };
+      setSessions(prev => prev.map(s => 
+        s.id === sessionId 
+          ? { ...s, messages: [errorMessage] }
+          : s
+      ));
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const deleteSession = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -189,6 +296,14 @@ const App: React.FC = () => {
   const handleSubmitDiagnosis = async (diagnosis: DiagnosisSubmission) => {
     if (!currentSession) return;
 
+    // Check if RAG mode
+    if (currentSession.isRAGMode) {
+      // Use RAG diagnosis form instead
+      setShowDiagnosisForm(false);
+      setShowRAGDiagnosisForm(true);
+      return;
+    }
+
     setShowDiagnosisForm(false);
     setShowFeedbackPanel(true);
     setIsEvaluating(true);
@@ -212,6 +327,84 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('Evaluation failed:', error);
       // Keep pending status, allow retry later
+    } finally {
+      setIsEvaluating(false);
+    }
+  };
+
+  const handleSubmitRAGDiagnosis = async (diagnosis: RAGDiagnosisSubmission) => {
+    if (!currentSession || !currentSession.isRAGMode || !currentSession.ragSessionId) return;
+
+    setShowRAGDiagnosisForm(false);
+    setShowFeedbackPanel(true);
+    setIsEvaluating(true);
+
+    const diagnosisWithTimestamp = {
+      ...diagnosis,
+      submittedAt: Date.now(),
+    };
+
+    // Update session with RAG diagnosis
+    setSessions(prev => prev.map(s => 
+      s.id === currentSessionId 
+        ? { ...s, ragDiagnosis: diagnosisWithTimestamp, status: 'pending-evaluation', updatedAt: Date.now() }
+        : s
+    ));
+
+    try {
+      // Call RAG evaluator API
+      const result = await ragService.evaluateAnswer(currentSession.ragSessionId, {
+        clinical: diagnosis.clinical,
+        paraclinical: diagnosis.paraclinical,
+        definitiveDiagnosis: diagnosis.definitiveDiagnosis,
+        differentialDiagnosis: diagnosis.differentialDiagnosis,
+        treatment: diagnosis.treatment,
+        medication: diagnosis.medication,
+      });
+
+      // Parse evaluation result
+      let evaluationObj: RAGEvaluationResult;
+      try {
+        evaluationObj = typeof result.evaluation === 'string' 
+          ? JSON.parse(result.evaluation) 
+          : result.evaluation;
+      } catch {
+        evaluationObj = {
+          diem_manh: [],
+          diem_yeu: [],
+          da_co: [],
+          thieu: [],
+          dien_giai: result.evaluation,
+          diem_so: 'N/A',
+          nhan_xet_tong_quan: '',
+        };
+      }
+
+      evaluationObj.standardAnswer = result.standard;
+      evaluationObj.sources = result.sources;
+      
+      setSessions(prev => prev.map(s => 
+        s.id === currentSessionId 
+          ? { ...s, ragEvaluation: evaluationObj, status: 'completed', updatedAt: Date.now() }
+          : s
+      ));
+    } catch (error) {
+      console.error('RAG Evaluation failed:', error);
+      // Create error evaluation
+      const errorEval: RAGEvaluationResult = {
+        diem_manh: [],
+        diem_yeu: ['Không thể đánh giá do lỗi kết nối'],
+        da_co: [],
+        thieu: [],
+        dien_giai: `Lỗi: ${error}`,
+        diem_so: 'N/A',
+        nhan_xet_tong_quan: 'Vui lòng thử lại sau',
+      };
+      setSessions(prev => prev.map(s => 
+        s.id === currentSessionId 
+          ? { ...s, ragEvaluation: errorEval, status: 'completed', updatedAt: Date.now() }
+          : s
+      ));
     } finally {
       setIsEvaluating(false);
     }
@@ -311,7 +504,13 @@ const App: React.FC = () => {
               {/* Proceed to Diagnosis button */}
               {currentSession.status === 'in-progress' && (
                 <button
-                  onClick={() => setShowDiagnosisForm(true)}
+                  onClick={() => {
+                    if (currentSession.isRAGMode) {
+                      setShowRAGDiagnosisForm(true);
+                    } else {
+                      setShowDiagnosisForm(true);
+                    }
+                  }}
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors text-sm"
                 >
                   <DocumentTextIcon className="w-4 h-4" />
@@ -350,11 +549,11 @@ const App: React.FC = () => {
                     
                     <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
                       <button 
-                        onClick={() => setShowCaseModal(true)}
+                        onClick={() => setShowDiseaseSelector(true)}
                         className="flex-1 flex items-center justify-center gap-3 px-6 py-4 bg-primary-600 text-white rounded-2xl hover:bg-primary-700 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 font-semibold text-lg"
                       >
                         <PlayIcon className="w-6 h-6" />
-                        Bắt đầu ca mới
+                        Bắt đầu ca mới (RAG Mode)
                       </button>
                       <button 
                         onClick={handleViewHistory}
@@ -435,6 +634,12 @@ const App: React.FC = () => {
         onStartCase={handleStartCase}
       />
 
+      <DiseaseSelectorModal
+        isOpen={showDiseaseSelector}
+        onClose={() => setShowDiseaseSelector(false)}
+        onSelectDisease={handleSelectRAGDisease}
+      />
+
       <DiagnosisForm
         isOpen={showDiagnosisForm}
         onClose={() => setShowDiagnosisForm(false)}
@@ -443,14 +648,24 @@ const App: React.FC = () => {
         minInteractions={MIN_INTERACTION_TURNS}
       />
 
+      <RAGDiagnosisForm
+        isOpen={showRAGDiagnosisForm}
+        onClose={() => setShowRAGDiagnosisForm(false)}
+        onSubmit={handleSubmitRAGDiagnosis}
+        isEvaluating={isEvaluating}
+      />
+
       <FeedbackPanel
         isOpen={showFeedbackPanel}
         onClose={() => setShowFeedbackPanel(false)}
         evaluation={currentSession?.evaluation || null}
+        ragEvaluation={currentSession?.ragEvaluation || null}
         diagnosis={currentSession?.diagnosis || null}
+        ragDiagnosis={currentSession?.ragDiagnosis || null}
         patientInfo={currentSession?.patientInfo || null}
         isLoading={isEvaluating}
         onBackToHome={handleBackToHome}
+        isRAGMode={currentSession?.isRAGMode || false}
       />
     </div>
   );

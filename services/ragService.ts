@@ -3,7 +3,7 @@
  * Connects React frontend to Python RAG backend
  */
 
-const RAG_API_URL = 'http://localhost:8000';
+const RAG_API_URL = 'http://localhost:5000/api';
 
 export interface Disease {
   id: string;
@@ -58,9 +58,8 @@ class RagService {
    */
   async checkHealth(): Promise<{
     status: string;
-    rag_ready: boolean;
-    evaluator_ready: boolean;
-    diseases_loaded: number;
+    message: string;
+    embedding_model: string;
   }> {
     try {
       const response = await fetch(`${this.baseUrl}/health`);
@@ -76,18 +75,31 @@ class RagService {
    * Get all diseases from RAG database
    */
   async getDiseases(category?: string, search?: string): Promise<Disease[]> {
+    console.log('[ragService] getDiseases called with:', { category, search });
     const params = new URLSearchParams();
-    if (category) params.append('category', category);
+    if (category && category !== 'all') params.append('category', category);
     if (search) params.append('search', search);
     
     const url = `${this.baseUrl}/diseases${params.toString() ? '?' + params.toString() : ''}`;
-    const response = await fetch(url);
+    console.log('[ragService] Fetching URL:', url);
     
-    if (!response.ok) {
-      throw new Error('Failed to fetch diseases');
+    try {
+      const response = await fetch(url);
+      console.log('[ragService] Response status:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch diseases: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[ragService] Response data keys:', Object.keys(data));
+      console.log('[ragService] diseases count:', data.diseases?.length);
+      
+      return data.diseases || [];
+    } catch (error) {
+      console.error('[ragService] getDiseases error:', error);
+      throw error;
     }
-    
-    return await response.json();
   }
 
   /**
@@ -123,43 +135,73 @@ class RagService {
   /**
    * Generate a patient case for training
    */
-  async generateCase(disease: string): Promise<GeneratedCase> {
-    const response = await fetch(`${this.baseUrl}/generate-case`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ disease }),
-    });
+  async generateCase(disease: string, sessionId: string): Promise<GeneratedCase & { sessionId: string; sources: any[] }> {
+    console.log('[ragService] generateCase called with:', { disease, sessionId });
+    const url = `${this.baseUrl}/start-case`;
+    console.log('[ragService] POST URL:', url);
     
-    if (!response.ok) {
-      throw new Error('Failed to generate case');
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ disease, sessionId }),
+      });
+      
+      console.log('[ragService] generateCase response:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[ragService] Error response:', errorText);
+        throw new Error(`Failed to generate case: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[ragService] generateCase data:', data);
+      
+      return {
+        case: data.case,
+        symptoms: data.symptoms,
+        disease: disease,
+        sessionId: data.sessionId,
+        sources: data.sources || []
+      };
+    } catch (error) {
+      console.error('[ragService] generateCase error:', error);
+      throw error;
     }
-    
-    return await response.json();
   }
 
   /**
    * Evaluate doctor's answer against RAG knowledge
    */
   async evaluateAnswer(
-    disease: string,
-    caseText: string,
-    doctorAnswer: string
+    sessionId: string,
+    diagnosis: {
+      clinical: string;
+      paraclinical: string;
+      definitiveDiagnosis: string;
+      differentialDiagnosis: string;
+      treatment: string;
+      medication: string;
+    }
   ): Promise<EvaluationResult> {
     const response = await fetch(`${this.baseUrl}/evaluate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        disease,
-        case: caseText,
-        doctor_answer: doctorAnswer,
-      }),
+      body: JSON.stringify({ sessionId, diagnosis }),
     });
     
     if (!response.ok) {
       throw new Error('Failed to evaluate answer');
     }
     
-    return await response.json();
+    const data = await response.json();
+    return {
+      case: data.case,
+      standard: data.standardAnswer,
+      evaluation: JSON.stringify(data.evaluation, null, 2),
+      sources: data.sources || []
+    };
   }
 
   /**

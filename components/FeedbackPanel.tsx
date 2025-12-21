@@ -1,5 +1,5 @@
 import React from 'react';
-import { EvaluationResult, DiagnosisSubmission, PatientInfo } from '../types';
+import { EvaluationResult, DiagnosisSubmission, PatientInfo, RAGEvaluationResult, RAGDiagnosisSubmission } from '../types';
 import { XMarkIcon, StarIcon, CheckIcon, ArrowLeftIcon } from './Icons';
 import { CLINICAL_SYSTEMS, DIFFICULTY_LEVELS } from '../constants';
 
@@ -7,10 +7,13 @@ interface FeedbackPanelProps {
   isOpen: boolean;
   onClose: () => void;
   evaluation: EvaluationResult | null;
+  ragEvaluation?: RAGEvaluationResult | null;
   diagnosis: DiagnosisSubmission | null;
+  ragDiagnosis?: RAGDiagnosisSubmission | null;
   patientInfo: PatientInfo | null;
   isLoading?: boolean;
   onBackToHome: () => void;
+  isRAGMode?: boolean;
 }
 
 const ScoreBar: React.FC<{ score: number; maxScore: number; label: string }> = ({ score, maxScore, label }) => {
@@ -41,10 +44,13 @@ const FeedbackPanel: React.FC<FeedbackPanelProps> = ({
   isOpen,
   onClose,
   evaluation,
+  ragEvaluation,
   diagnosis,
+  ragDiagnosis,
   patientInfo,
   isLoading = false,
   onBackToHome,
+  isRAGMode = false,
 }) => {
   if (!isOpen) return null;
 
@@ -101,8 +107,102 @@ const FeedbackPanel: React.FC<FeedbackPanelProps> = ({
               <p className="text-gray-600 font-medium">Đang đánh giá kết quả...</p>
               <p className="text-sm text-gray-400 mt-1">Vui lòng đợi trong giây lát</p>
             </div>
+          ) : isRAGMode && ragEvaluation ? (
+            <div className="space-y-6">
+              {/* RAG Evaluation Display */}
+              <div className="text-center py-6">
+                <div className="inline-flex items-center justify-center w-32 h-32 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg mb-4">
+                  <div className="text-center">
+                    <span className="text-4xl font-bold text-white">{ragEvaluation.diem_so || 'N/A'}</span>
+                  </div>
+                </div>
+                <h3 className="text-2xl font-bold text-gray-800">
+                  {ragEvaluation.nhan_xet_tong_quan || 'Đánh giá hoàn tất'}
+                </h3>
+              </div>
+
+              {/* Điểm mạnh */}
+              {ragEvaluation.diem_manh && ragEvaluation.diem_manh.length > 0 && (
+                <div className="bg-green-50 rounded-xl p-5">
+                  <h4 className="font-semibold text-green-800 mb-3 flex items-center gap-2">
+                    <CheckIcon className="w-5 h-5" />
+                    Điểm mạnh
+                  </h4>
+                  <ul className="space-y-2">
+                    {ragEvaluation.diem_manh.map((item, idx) => (
+                      <li key={idx} className="text-green-700 flex items-start gap-2">
+                        <span className="text-green-500 mt-1">✓</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Điểm yếu */}
+              {ragEvaluation.diem_yeu && ragEvaluation.diem_yeu.length > 0 && (
+                <div className="bg-amber-50 rounded-xl p-5">
+                  <h4 className="font-semibold text-amber-800 mb-3">Điểm cần cải thiện</h4>
+                  <ul className="space-y-2">
+                    {ragEvaluation.diem_yeu.map((item, idx) => (
+                      <li key={idx} className="text-amber-700 flex items-start gap-2">
+                        <span className="text-amber-500 mt-1">⚠</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Đã có */}
+              {ragEvaluation.da_co && ragEvaluation.da_co.length > 0 && (
+                <div className="bg-blue-50 rounded-xl p-5">
+                  <h4 className="font-semibold text-blue-800 mb-3">Đã có trong câu trả lời</h4>
+                  <ul className="space-y-2">
+                    {ragEvaluation.da_co.map((item, idx) => (
+                      <li key={idx} className="text-blue-700 text-sm">{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Thiếu */}
+              {ragEvaluation.thieu && ragEvaluation.thieu.length > 0 && (
+                <div className="bg-red-50 rounded-xl p-5">
+                  <h4 className="font-semibold text-red-800 mb-3">Còn thiếu</h4>
+                  <ul className="space-y-2">
+                    {ragEvaluation.thieu.map((item, idx) => (
+                      <li key={idx} className="text-red-700 text-sm">{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Diễn giải */}
+              {ragEvaluation.dien_giai && (
+                <div className="bg-gray-50 rounded-xl p-5">
+                  <h4 className="font-semibold text-gray-800 mb-3">Diễn giải chi tiết</h4>
+                  <div className="text-gray-700 text-sm whitespace-pre-wrap">
+                    {Array.isArray(ragEvaluation.dien_giai) 
+                      ? ragEvaluation.dien_giai.join('\n')
+                      : ragEvaluation.dien_giai}
+                  </div>
+                </div>
+              )}
+
+              {/* Standard Answer */}
+              {ragEvaluation.standardAnswer && (
+                <div className="bg-indigo-50 rounded-xl p-5">
+                  <h4 className="font-semibold text-indigo-800 mb-3">Đáp án chuẩn</h4>
+                  <div className="text-indigo-700 text-sm whitespace-pre-wrap">
+                    {ragEvaluation.standardAnswer}
+                  </div>
+                </div>
+              )}
+            </div>
           ) : evaluation ? (
             <div className="space-y-6">
+              {/* Original Gemini Evaluation Display */}
               {/* Overall Score */}
               <div className="text-center py-6">
                 <div className={`inline-flex items-center justify-center w-32 h-32 rounded-full bg-gradient-to-br ${getScoreBg(evaluation.overallScore)} shadow-lg mb-4`}>
