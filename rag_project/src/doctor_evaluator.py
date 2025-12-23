@@ -71,7 +71,7 @@ CASE BỆNH:
         """RAG tìm triệu chứng bệnh - CẢI THIỆN"""
         # Query chi tiết hơn để tìm đúng bệnh
         queries = [
-            f"{disease} lâm sàng",
+            f"{disease} biểu hiện",
             f"{disease} triệu chứng",
             f"{disease} dấu hiệu"
         ]
@@ -79,7 +79,7 @@ CASE BỆNH:
         all_symptoms = []
         sources = []
         for q in queries:
-            print(f"🔍 Query: {q}")
+            print(f" Query: {q}")
             answer, src = self.rag.query(q)
             if answer and len(answer.strip()) > 50:  # Chỉ lấy answer có nội dung
                 all_symptoms.append(answer)
@@ -92,7 +92,7 @@ CASE BỆNH:
         else:
             symptoms_summary = f"Không tìm thấy thông tin triệu chứng cho {disease}"
         
-        print(f"📋 Tìm thấy triệu chứng: {symptoms_summary[:200]}...")
+        print(f" Tìm thấy triệu chứng: {symptoms_summary[:200]}...")
         return symptoms_summary, sources
 
     def get_detailed_standard_knowledge(self, disease: str):

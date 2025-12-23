@@ -352,6 +352,7 @@ const App: React.FC = () => {
     ));
 
     try {
+      console.log('[App] Calling RAG evaluate API...');
       // Call RAG evaluator API
       const result = await ragService.evaluateAnswer(currentSession.ragSessionId, {
         clinical: diagnosis.clinical,
@@ -361,6 +362,7 @@ const App: React.FC = () => {
         treatment: diagnosis.treatment,
         medication: diagnosis.medication,
       });
+      console.log('[App] RAG evaluate result:', result);
 
       // Parse evaluation result
       let evaluationObj: RAGEvaluationResult;
@@ -368,26 +370,30 @@ const App: React.FC = () => {
         evaluationObj = typeof result.evaluation === 'string' 
           ? JSON.parse(result.evaluation) 
           : result.evaluation;
-      } catch {
+        console.log('[App] Parsed evaluation obj:', evaluationObj);
+      } catch (parseError) {
+        console.error('[App] Failed to parse evaluation:', parseError);
         evaluationObj = {
           diem_manh: [],
-          diem_yeu: [],
+          diem_yeu: ['Không thể parse JSON đánh giá'],
           da_co: [],
           thieu: [],
           dien_giai: result.evaluation,
           diem_so: 'N/A',
-          nhan_xet_tong_quan: '',
+          nhan_xet_tong_quan: 'Lỗi parse',
         };
       }
 
       evaluationObj.standardAnswer = result.standard;
       evaluationObj.sources = result.sources;
+      console.log('[App] Final evaluation object to save:', evaluationObj);
       
       setSessions(prev => prev.map(s => 
         s.id === currentSessionId 
           ? { ...s, ragEvaluation: evaluationObj, status: 'completed', updatedAt: Date.now() }
           : s
       ));
+      console.log('[App] Evaluation saved to session');
     } catch (error) {
       console.error('RAG Evaluation failed:', error);
       // Create error evaluation

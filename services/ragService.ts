@@ -3,7 +3,7 @@
  * Connects React frontend to Python RAG backend
  */
 
-const RAG_API_URL = 'http://localhost:5000/api';
+const RAG_API_URL = 'http://localhost:8001/api';
 
 export interface Disease {
   id: string;
@@ -141,11 +141,18 @@ class RagService {
     console.log('[ragService] POST URL:', url);
     
     try {
+      // Create AbortController with 180s timeout for RAG + Gemini processing
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 180000); // 180 seconds (3 minutes)
+      
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ disease, sessionId }),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
       
       console.log('[ragService] generateCase response:', response.status, response.statusText);
       
@@ -185,21 +192,34 @@ class RagService {
       medication: string;
     }
   ): Promise<EvaluationResult> {
+    // Create AbortController with 180s timeout for RAG + Gemini evaluation
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 180000);
+    
     const response = await fetch(`${this.baseUrl}/evaluate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionId, diagnosis }),
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       throw new Error('Failed to evaluate answer');
     }
     
     const data = await response.json();
+    console.log('[ragService] Evaluate response:', data);
+    
     return {
       case: data.case,
-      standard: data.standardAnswer,
-      evaluation: JSON.stringify(data.evaluation, null, 2),
+      standard: typeof data.standardAnswer === 'object' 
+        ? data.standardAnswer.content 
+        : data.standardAnswer,
+      evaluation: typeof data.evaluation === 'string'
+        ? data.evaluation
+        : JSON.stringify(data.evaluation, null, 2),
       sources: data.sources || []
     };
   }
